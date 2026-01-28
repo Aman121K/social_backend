@@ -1,6 +1,6 @@
-# Instagram Clone Backend API
+# Social Backend API
 
-A complete backend API for Instagram Clone built with Node.js, Express, MongoDB, and Socket.io.
+A complete backend API for Social built with Node.js, Express, MongoDB, and Socket.io.
 
 ## Features
 

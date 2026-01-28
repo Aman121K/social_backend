@@ -5,8 +5,8 @@ const transporter = nodemailer.createTransport({
   port: process.env.EMAIL_PORT || 587,
   secure: false,
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: 'javascript.pgl@gmail.com',
+    pass: 'msdf qhmj fhbv xlbm'
   },
 });
 
@@ -14,8 +14,8 @@ const sendOTP = async (email, otp, type = 'Verification') => {
   try {
     const subject =
       type === 'Password Reset'
-        ? 'Instagram Clone - Password Reset OTP'
-        : 'Instagram Clone - OTP Verification';
+        ? 'Social - Password Reset OTP'
+        : 'Social - OTP Verification';
     const message =
       type === 'Password Reset'
         ? 'Your OTP for password reset is:'
@@ -27,7 +27,7 @@ const sendOTP = async (email, otp, type = 'Verification') => {
       subject: subject,
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #0095f6;">Instagram Clone</h2>
+          <h2 style="color: #0095f6;">Social</h2>
           <p>${message}</p>
           <h1 style="color: #0095f6; font-size: 32px; letter-spacing: 5px;">${otp}</h1>
           <p>This OTP will expire in 10 minutes.</p>
@@ -44,5 +44,5 @@ const sendOTP = async (email, otp, type = 'Verification') => {
   }
 };
 
-module.exports = {sendOTP};
+module.exports = { sendOTP };
 

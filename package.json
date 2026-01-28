@@ -1,7 +1,7 @@
 {
   "name": "instagram-clone-backend",
   "version": "1.0.0",
-  "description": "Backend API for Instagram Clone",
+  "description": "Backend API for Social",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
