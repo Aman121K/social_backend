@@ -52,7 +52,7 @@ io.on('connection', (socket) => {
 
 // MongoDB Connection
 mongoose
-  .connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/social_clone', {
+  .connect(process.env.MONGODB_URI || 'mongodb://socialapp:Social@12345@localhost:27018/social?authSource=social', {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
