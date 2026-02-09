@@ -37,6 +37,47 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Deep link verification (App Links / Universal Links) – must be at domain root
+// Android: https://socialbd.duckdns.org/.well-known/assetlinks.json
+const androidPackage = process.env.ANDROID_PACKAGE_NAME || 'com.instagramclone';
+const sha256Fingerprints = process.env.ANDROID_SHA256_FINGERPRINTS
+  ? process.env.ANDROID_SHA256_FINGERPRINTS.split(',').map((s) => s.trim())
+  : [];
+app.get('/.well-known/assetlinks.json', (req, res) => {
+  res.set('Content-Type', 'application/json');
+  const list = sha256Fingerprints.length
+    ? sha256Fingerprints
+    : ['REPLACE_WITH_YOUR_RELEASE_KEYSTORE_SHA256'];
+  res.json([
+    {
+      relation: ['delegate_permission/common.handle_all_urls'],
+      target: {
+        namespace: 'android_app',
+        package_name: androidPackage,
+        sha256_cert_fingerprints: list,
+      },
+    },
+  ]);
+});
+
+// iOS: https://socialbd.duckdns.org/.well-known/apple-app-site-association (no .json)
+const appleTeamId = process.env.APPLE_TEAM_ID || 'REPLACE_WITH_YOUR_APPLE_TEAM_ID';
+const appleBundleId = process.env.APPLE_BUNDLE_ID || 'org.reactjs.native.example.InstagramClone';
+app.get('/.well-known/apple-app-site-association', (req, res) => {
+  res.set('Content-Type', 'application/json');
+  res.json({
+    applinks: {
+      apps: [],
+      details: [
+        {
+          appID: `${appleTeamId}.${appleBundleId}`,
+          paths: ['/p/*'],
+        },
+      ],
+    },
+  });
+});
+
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/posts', require('./routes/posts'));
