@@ -26,28 +26,69 @@ app.use('/api/comments', require('./routes/comments'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/stories', require('./routes/stories'));
+const notificationsRoute = require('./routes/notifications');
+app.use('/api/notifications', notificationsRoute.router);
+app.use('/api/search', require('./routes/search'));
 
-// Socket.io connection handling
+// Socket.io connection handling – all handlers wrapped so connection issues never crash the server
 io.on('connection', (socket) => {
-  console.log('User connected:', socket.id);
+  try {
+    console.log('User connected:', socket.id);
+  } catch (e) {
+    console.error('Socket connection log error:', e.message);
+  }
 
   socket.on('join-room', (userId) => {
-    socket.join(`user-${userId}`);
-    console.log(`User ${userId} joined their room`);
+    try {
+      if (userId) {
+        socket.join(`user-${userId}`);
+        console.log(`User ${userId} joined their room`);
+      }
+    } catch (e) {
+      console.error('join-room error:', e.message);
+    }
   });
 
   socket.on('send-message', (data) => {
-    const {receiverId, message, senderId} = data;
-    io.to(`user-${receiverId}`).emit('receive-message', {
-      senderId,
-      message,
-      timestamp: new Date(),
-    });
+    try {
+      const receiverId = data && data.receiverId;
+      const message = data && data.message;
+      const senderId = data && data.senderId;
+      if (receiverId != null) {
+        io.to(`user-${receiverId}`).emit('receive-message', {
+          senderId,
+          message: message != null ? message : '',
+          timestamp: new Date(),
+        });
+      }
+    } catch (e) {
+      console.error('send-message error:', e.message);
+    }
   });
 
-  socket.on('disconnect', () => {
-    console.log('User disconnected:', socket.id);
+  socket.on('disconnect', (reason) => {
+    try {
+      console.log('User disconnected:', socket.id, reason);
+    } catch (e) {
+      console.error('Socket disconnect log error:', e.message);
+    }
   });
+
+  socket.on('error', (err) => {
+    try {
+      console.error('Socket error:', err && err.message);
+    } catch (e) {
+      console.error('Socket error handler:', e.message);
+    }
+  });
+});
+
+io.engine.on('connection_error', (err) => {
+  try {
+    console.error('Socket.io connection_error:', err && err.message);
+  } catch (e) {
+    console.error('connection_error handler:', e.message);
+  }
 });
 
 // MongoDB Connection

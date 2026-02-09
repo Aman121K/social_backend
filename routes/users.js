@@ -2,8 +2,35 @@ const express = require('express');
 const {body, validationResult} = require('express-validator');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
+const {createNotification} = require('./notifications');
 
 const router = express.Router();
+
+// @route   GET /api/users
+// @desc    List all users (for new message, search, etc.). Excludes current user.
+// @access  Private
+router.get('/', auth, async (req, res) => {
+  try {
+    const {q, limit = 50} = req.query;
+    const currentId = req.user._id;
+    const filter = {_id: {$ne: currentId}};
+    if (q && q.trim()) {
+      const search = q.trim();
+      filter.$or = [
+        {name: {$regex: search, $options: 'i'}},
+        {username: {$regex: search, $options: 'i'}},
+      ];
+    }
+    const users = await User.find(filter)
+      .select('name username profilePicture verified')
+      .limit(Math.min(Number(limit) || 50, 100))
+      .sort({name: 1});
+    res.json(users);
+  } catch (error) {
+    console.error('List users error:', error);
+    res.status(500).json({message: 'Server error'});
+  }
+});
 
 // @route   GET /api/users/:id
 // @desc    Get user profile
@@ -12,14 +39,18 @@ router.get('/:id', auth, async (req, res) => {
   try {
     const user = await User.findById(req.params.id)
       .select('-password -otp -otpExpiry')
-      .populate('followers', 'name username profilePicture')
-      .populate('following', 'name username profilePicture');
+      .populate('followers', 'name username profilePicture verified')
+      .populate('following', 'name username profilePicture verified');
 
     if (!user) {
       return res.status(404).json({message: 'User not found'});
     }
 
-    res.json(user);
+    // Ensure verified field is set
+    const userObj = user.toObject();
+    userObj.verified = userObj.verified || userObj.isVerified || false;
+
+    res.json(userObj);
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({message: 'Server error'});
@@ -66,6 +97,7 @@ router.put(
           bio: user.bio,
           website: user.website,
           phone: user.phone,
+          verified: user.verified || user.isVerified || false,
         },
       });
     } catch (error) {
@@ -105,6 +137,8 @@ router.post('/:id/follow', auth, async (req, res) => {
       // Follow
       currentUser.following.push(targetUser._id);
       targetUser.followers.push(currentUser._id);
+      // Create notification for followed user
+      await createNotification(targetUser._id, 'follow', currentUser._id);
     }
 
     await currentUser.save();
@@ -150,6 +184,143 @@ router.delete('/delete-account', auth, async (req, res) => {
     res.status(500).json({message: 'Server error'});
   }
 });
+
+// @route   PUT /api/users/email
+// @desc    Update user email
+// @access  Private
+router.put(
+  '/email',
+  auth,
+  [
+    body('email').isEmail().withMessage('Please enter a valid email'),
+    body('password').notEmpty().withMessage('Password is required'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({errors: errors.array()});
+      }
+
+      const {email, password} = req.body;
+      const user = await User.findById(req.user._id);
+
+      // Verify password
+      const isMatch = await user.comparePassword(password);
+      if (!isMatch) {
+        return res.status(400).json({message: 'Invalid password'});
+      }
+
+      // Check if email already exists
+      const existingUser = await User.findOne({email: email.toLowerCase()});
+      if (existingUser && existingUser._id.toString() !== user._id.toString()) {
+        return res.status(400).json({message: 'Email already in use'});
+      }
+
+      user.email = email.toLowerCase();
+      await user.save();
+
+      res.json({
+        message: 'Email updated successfully',
+        email: user.email,
+      });
+    } catch (error) {
+      console.error('Update email error:', error);
+      res.status(500).json({message: 'Server error'});
+    }
+  }
+);
+
+// @route   PUT /api/users/password
+// @desc    Update user password
+// @access  Private
+router.put(
+  '/password',
+  auth,
+  [
+    body('currentPassword').notEmpty().withMessage('Current password is required'),
+    body('newPassword')
+      .isLength({min: 6})
+      .withMessage('New password must be at least 6 characters'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({errors: errors.array()});
+      }
+
+      const {currentPassword, newPassword} = req.body;
+      const user = await User.findById(req.user._id);
+
+      // Verify current password
+      const isMatch = await user.comparePassword(currentPassword);
+      if (!isMatch) {
+        return res.status(400).json({message: 'Current password is incorrect'});
+      }
+
+      // Update password
+      user.password = newPassword;
+      await user.save();
+
+      res.json({message: 'Password updated successfully'});
+    } catch (error) {
+      console.error('Update password error:', error);
+      res.status(500).json({message: 'Server error'});
+    }
+  }
+);
+
+// @route   POST /api/users/apply-verification
+// @desc    Apply for verified account
+// @access  Private
+router.post(
+  '/apply-verification',
+  auth,
+  [
+    body('name').notEmpty().withMessage('Name is required'),
+    body('email').isEmail().withMessage('Valid email is required'),
+    body('reason').notEmpty().withMessage('Reason is required'),
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({errors: errors.array()});
+      }
+
+      const {name, email, reason} = req.body;
+      const user = await User.findById(req.user._id);
+
+      // Check if already verified
+      if (user.verified || user.isVerified) {
+        return res.status(400).json({message: 'Account is already verified'});
+      }
+
+      // Check if already applied
+      if (user.verificationApplication && user.verificationApplication.status === 'pending') {
+        return res.status(400).json({message: 'Verification application already pending'});
+      }
+
+      // Create verification application
+      user.verificationApplication = {
+        status: 'pending',
+        appliedAt: new Date(),
+        reason: reason,
+      };
+
+      await user.save();
+
+      res.json({
+        message: 'Verification application submitted successfully',
+        status: 'pending',
+      });
+    } catch (error) {
+      console.error('Apply verification error:', error);
+      res.status(500).json({message: 'Server error'});
+    }
+  }
+);
 
 module.exports = router;
 

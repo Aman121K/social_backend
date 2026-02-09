@@ -47,6 +47,25 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    verified: {
+      type: Boolean,
+      default: false,
+    },
+    verificationApplication: {
+      status: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: null,
+      },
+      appliedAt: {
+        type: Date,
+        default: null,
+      },
+      reason: {
+        type: String,
+        default: '',
+      },
+    },
     otp: {
       type: String,
       default: null,

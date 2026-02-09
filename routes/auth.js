@@ -143,6 +143,7 @@ router.post(
           username: user.username,
           email: user.email,
           profilePicture: user.profilePicture,
+          verified: user.verified || user.isVerified || false,
         },
       });
     } catch (error) {
@@ -202,6 +203,7 @@ router.post(
           bio: user.bio,
           website: user.website,
           phone: user.phone,
+          verified: user.verified || user.isVerified || false,
         },
       });
     } catch (error) {
@@ -263,8 +265,10 @@ router.post(
 // @access  Private
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
-    res.json(user);
+    const user = await User.findById(req.user._id).select('-password -otp -otpExpiry');
+    const userObj = user.toObject();
+    userObj.verified = userObj.verified || userObj.isVerified || false;
+    res.json(userObj);
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({message: 'Server error'});

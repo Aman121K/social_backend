@@ -3,18 +3,19 @@ const {body, validationResult} = require('express-validator');
 const Post = require('../models/Post');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
+const {createNotification} = require('./notifications');
 
 const router = express.Router();
 
 // @route   POST /api/posts
-// @desc    Create a new post
+// @desc    Create a new tweet/post
 // @access  Private
 router.post(
   '/',
   auth,
   [
-    body('image').notEmpty().withMessage('Image is required'),
-    body('caption').optional().isLength({max: 2200}).withMessage('Caption too long'),
+    body('text').optional().isLength({max: 280}).withMessage('Tweet text too long'),
+    body('caption').optional().isLength({max: 280}).withMessage('Caption too long'),
   ],
   async (req, res) => {
     try {
@@ -23,17 +24,34 @@ router.post(
         return res.status(400).json({errors: errors.array()});
       }
 
-      const {image, caption, location} = req.body;
+      const {text, caption, image, video} = req.body;
+
+      // At least one of text, caption, image, or video must be provided
+      if (!text && !caption && !image && !video) {
+        return res.status(400).json({message: 'Tweet content is required'});
+      }
 
       const post = new Post({
         user: req.user._id,
-        image,
-        caption: caption || '',
-        location: location || '',
+        text: text || caption || '',
+        caption: caption || text || '',
+        image: image || '',
+        video: video || '',
       });
 
       await post.save();
-      await post.populate('user', 'name username profilePicture');
+      await post.populate('user', 'name username profilePicture verified');
+
+      // Create notifications for mentions
+      const mentionRegex = /@(\w+)/g;
+      const mentions = post.text.match(mentionRegex) || post.caption.match(mentionRegex) || [];
+      for (const mention of mentions) {
+        const username = mention.replace('@', '').toLowerCase();
+        const mentionedUser = await User.findOne({username});
+        if (mentionedUser) {
+          await createNotification(mentionedUser._id, 'mention', req.user._id, post._id);
+        }
+      }
 
       res.status(201).json(post);
     } catch (error) {
@@ -44,18 +62,21 @@ router.post(
 );
 
 // @route   GET /api/posts
-// @desc    Get all posts (feed)
+// @desc    Get all posts/tweets (feed)
 // @access  Private
 router.get('/', auth, async (req, res) => {
   try {
     const posts = await Post.find()
-      .populate('user', 'name username profilePicture')
+      .populate('user', 'name username profilePicture verified')
+      .populate('retweetedBy', 'name username profilePicture verified')
+      .populate('originalPost')
       .populate('likes', 'name username profilePicture')
+      .populate('retweets', 'name username profilePicture')
       .populate({
         path: 'comments',
         populate: {
           path: 'user',
-          select: 'name username profilePicture',
+          select: 'name username profilePicture verified',
         },
       })
       .sort({createdAt: -1});
@@ -68,18 +89,21 @@ router.get('/', auth, async (req, res) => {
 });
 
 // @route   GET /api/posts/:id
-// @desc    Get a single post
+// @desc    Get a single post/tweet
 // @access  Private
 router.get('/:id', auth, async (req, res) => {
   try {
     const post = await Post.findById(req.params.id)
-      .populate('user', 'name username profilePicture')
+      .populate('user', 'name username profilePicture verified')
+      .populate('retweetedBy', 'name username profilePicture verified')
+      .populate('originalPost')
       .populate('likes', 'name username profilePicture')
+      .populate('retweets', 'name username profilePicture')
       .populate({
         path: 'comments',
         populate: {
           path: 'user',
-          select: 'name username profilePicture',
+          select: 'name username profilePicture verified',
         },
       });
 
@@ -90,6 +114,78 @@ router.get('/:id', auth, async (req, res) => {
     res.json(post);
   } catch (error) {
     console.error('Get post error:', error);
+    res.status(500).json({message: 'Server error'});
+  }
+});
+
+// @route   POST /api/posts/:id/retweet
+// @desc    Retweet a post
+// @access  Private
+router.post('/:id/retweet', auth, async (req, res) => {
+  try {
+    const originalPost = await Post.findById(req.params.id);
+
+    if (!originalPost) {
+      return res.status(404).json({message: 'Post not found'});
+    }
+
+    // Check if user already retweeted
+    const isRetweeted = originalPost.retweets.some(
+      (userId) => userId.toString() === req.user._id.toString()
+    );
+
+    if (isRetweeted) {
+      // Unretweet - remove from retweets
+      originalPost.retweets = originalPost.retweets.filter(
+        (id) => id.toString() !== req.user._id.toString()
+      );
+      await originalPost.save();
+
+      // Delete retweet post if exists
+      await Post.findOneAndDelete({
+        originalPost: originalPost._id,
+        retweetedBy: req.user._id,
+      });
+
+      return res.json({
+        message: 'Retweet removed',
+        retweets: originalPost.retweets.length,
+        isRetweeted: false,
+      });
+    } else {
+      // Retweet - add to retweets array
+      originalPost.retweets.push(req.user._id);
+      await originalPost.save();
+
+      // Create retweet post
+      const retweetPost = new Post({
+        user: originalPost.user,
+        originalPost: originalPost._id,
+        retweetedBy: req.user._id,
+        text: originalPost.text || originalPost.caption,
+        image: originalPost.image,
+        video: originalPost.video,
+      });
+
+      await retweetPost.save();
+      await retweetPost.populate('user', 'name username profilePicture verified');
+      await retweetPost.populate('retweetedBy', 'name username profilePicture verified');
+      await retweetPost.populate('originalPost');
+
+      // Create notification for original post owner
+      if (originalPost.user.toString() !== req.user._id.toString()) {
+        await createNotification(originalPost.user, 'retweet', req.user._id, originalPost._id);
+      }
+
+      return res.json({
+        message: 'Post retweeted',
+        retweets: originalPost.retweets.length,
+        isRetweeted: true,
+        retweetPost,
+      });
+    }
+  } catch (error) {
+    console.error('Retweet error:', error);
     res.status(500).json({message: 'Server error'});
   }
 });
@@ -118,12 +214,16 @@ router.post('/:id/like', auth, async (req, res) => {
     } else {
       // Like - add user ID to likes array
       post.likes.push(req.user._id);
+      // Create notification for post owner
+      if (post.user.toString() !== req.user._id.toString()) {
+        await createNotification(post.user, 'like', req.user._id, post._id);
+      }
     }
 
     await post.save();
 
     // Return updated post with populated user info
-    await post.populate('user', 'name username profilePicture');
+    await post.populate('user', 'name username profilePicture verified');
 
     res.json({
       message: isLiked ? 'Post unliked' : 'Post liked',

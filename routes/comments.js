@@ -3,6 +3,7 @@ const {body, validationResult} = require('express-validator');
 const Comment = require('../models/Comment');
 const Post = require('../models/Post');
 const auth = require('../middleware/auth');
+const {createNotification} = require('./notifications');
 
 const router = express.Router();
 
@@ -37,11 +38,16 @@ router.post(
       });
 
       await comment.save();
-      await comment.populate('user', 'name username profilePicture');
+      await comment.populate('user', 'name username profilePicture verified');
 
       // Add comment to post
       post.comments.push(comment._id);
       await post.save();
+
+      // Create notification for post owner
+      if (post.user.toString() !== req.user._id.toString()) {
+        await createNotification(post.user, 'comment', req.user._id, post._id, comment._id);
+      }
 
       res.status(201).json(comment);
     } catch (error) {
@@ -57,7 +63,7 @@ router.post(
 router.get('/post/:postId', auth, async (req, res) => {
   try {
     const comments = await Comment.find({post: req.params.postId})
-      .populate('user', 'name username profilePicture')
+      .populate('user', 'name username profilePicture verified')
       .populate('likes', 'name username profilePicture')
       .sort({createdAt: -1});
 

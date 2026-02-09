@@ -1,7 +1,7 @@
 {
-  "name": "instagram-clone-backend",
+  "name": "tweetster-backend",
   "version": "1.0.0",
-  "description": "Backend API for Social",
+  "description": "Backend API for Tweetster (Twitter Clone)",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
