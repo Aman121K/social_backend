@@ -34,22 +34,29 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({message: 'Receiver ID is required'});
     }
 
-    const currentUserId = req.user._id.toString();
-    const receiverIdStr = receiverId.toString();
+    const toStr = (id) => (id == null ? '' : String(id));
+    const currentUserId = toStr(req.user._id);
+    const receiverIdStr = toStr(receiverId);
     if (currentUserId === receiverIdStr) {
       return res.status(400).json({message: 'Cannot start a chat with yourself'});
     }
 
-    const receiver = await User.findById(receiverId);
+    const receiver = await User.findById(receiverId).select('following').lean();
     if (!receiver) {
       return res.status(404).json({message: 'User not found'});
     }
 
-    const currentUser = await User.findById(req.user._id).select('following');
-    const currentFollowing = (currentUser.following || []).map((id) => id.toString());
-    const receiverFollowing = (receiver.following || []).map((id) => id.toString());
-    const mutualFollow =
-      currentFollowing.includes(receiverIdStr) && receiverFollowing.includes(currentUserId);
+    const currentUser = await User.findById(req.user._id).select('following').lean();
+    if (!currentUser) {
+      return res.status(500).json({message: 'Server error'});
+    }
+
+    const currentFollowing = (currentUser.following || []).map((id) => toStr(id));
+    const receiverFollowing = (receiver.following || []).map((id) => toStr(id));
+    const iFollowThem = currentFollowing.includes(receiverIdStr);
+    const theyFollowMe = receiverFollowing.includes(currentUserId);
+    const mutualFollow = iFollowThem && theyFollowMe;
+
     if (!mutualFollow) {
       return res.status(403).json({
         message: 'You can only message users who follow you back. Send a follow request and wait for them to accept.',

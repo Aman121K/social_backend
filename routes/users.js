@@ -46,13 +46,51 @@ router.get('/:id', auth, async (req, res) => {
       return res.status(404).json({message: 'User not found'});
     }
 
-    // Ensure verified field is set
+    // Ensure verified field is set and add counts for profile UI
     const userObj = user.toObject();
     userObj.verified = userObj.verified || userObj.isVerified || false;
+    userObj.followersCount = (userObj.followers || []).length;
+    userObj.followingCount = (userObj.following || []).length;
 
     res.json(userObj);
   } catch (error) {
     console.error('Get user error:', error);
+    res.status(500).json({message: 'Server error'});
+  }
+});
+
+// @route   GET /api/users/:id/followers
+// @desc    List users who follow this user
+// @access  Private
+router.get('/:id/followers', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+      .select('followers')
+      .populate('followers', 'name username profilePicture verified')
+      .lean();
+    if (!user) return res.status(404).json({message: 'User not found'});
+    const list = user.followers || [];
+    res.json(list);
+  } catch (error) {
+    console.error('List followers error:', error);
+    res.status(500).json({message: 'Server error'});
+  }
+});
+
+// @route   GET /api/users/:id/following
+// @desc    List users this user follows
+// @access  Private
+router.get('/:id/following', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+      .select('following')
+      .populate('following', 'name username profilePicture verified')
+      .lean();
+    if (!user) return res.status(404).json({message: 'User not found'});
+    const list = user.following || [];
+    res.json(list);
+  } catch (error) {
+    console.error('List following error:', error);
     res.status(500).json({message: 'Server error'});
   }
 });

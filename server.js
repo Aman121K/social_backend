@@ -131,13 +131,14 @@ io.on('connection', (socket) => {
       await chat.save();
 
       const savedMsg = chat.messages[chat.messages.length - 1];
-      const otherId = participants.find((id) => id !== senderId.toString());
+      const senderStr = senderId.toString();
+      const otherId = participants.find((id) => id !== senderStr);
       if (otherId) {
         io.to(`user-${otherId}`).emit('receive-message', {
-          chatId,
+          chatId: String(chatId),
           message: {
             _id: savedMsg._id,
-            sender: savedMsg.sender,
+            sender: senderStr,
             text: savedMsg.text,
             timestamp: savedMsg.timestamp,
           },
