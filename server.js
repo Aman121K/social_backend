@@ -44,6 +44,7 @@ app.use('/api/comments', require('./routes/comments'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/chat', require('./routes/chat'));
 app.use('/api/stories', require('./routes/stories'));
+app.use('/api/upload', require('./routes/upload'));
 const notificationsRoute = require('./routes/notifications');
 app.use('/api/notifications', notificationsRoute.router);
 app.use('/api/search', require('./routes/search'));

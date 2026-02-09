@@ -35,7 +35,12 @@
      - Create an app password and use it in `EMAIL_PASS`
    - Or use any SMTP service (SendGrid, Mailgun, etc.)
 
-5. **Run the Server**
+5. **Configure Cloudflare R2 (optional – for post & profile images)**
+   - See **[CLOUDFLARE_R2.md](./CLOUDFLARE_R2.md)** for creating a bucket and getting API keys.
+   - Add `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, and `R2_PUBLIC_URL` to `.env`.
+   - Without R2, the app still runs; image upload will return 503 until R2 is set.
+
+6. **Run the Server**
    ```bash
    # Development mode (auto-restart on changes)
    npm run dev
