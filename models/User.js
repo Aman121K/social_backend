@@ -54,7 +54,7 @@ const userSchema = new mongoose.Schema(
     verificationApplication: {
       status: {
         type: String,
-        enum: ['pending', 'approved', 'rejected'],
+        enum: [null, 'pending', 'approved', 'rejected'],
         default: null,
       },
       appliedAt: {
