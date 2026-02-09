@@ -2,6 +2,7 @@ const express = require('express');
 const {body, validationResult} = require('express-validator');
 const Post = require('../models/Post');
 const User = require('../models/User');
+const PostReport = require('../models/PostReport');
 const auth = require('../middleware/auth');
 const {createNotification} = require('./notifications');
 
@@ -73,11 +74,22 @@ router.post(
 );
 
 // @route   GET /api/posts
-// @desc    Get all posts/tweets (feed)
+// @desc    Get all posts/tweets (feed). Excludes posts from blocked users and posts reported by current user.
 // @access  Private
 router.get('/', auth, async (req, res) => {
   try {
-    const posts = await Post.find()
+    const currentUserId = req.user._id;
+    const currentUser = await User.findById(currentUserId).select('blockedUsers').lean();
+    const blockedIds = (currentUser?.blockedUsers || []).map((id) => id && id.toString ? id.toString() : id).filter(Boolean);
+
+    const reportedDocs = await PostReport.find({ reporter: currentUserId }).select('post').lean();
+    const reportedIds = (reportedDocs || []).map((r) => r.post).filter(Boolean);
+
+    const filter = {};
+    if (blockedIds.length) filter.user = { $nin: blockedIds };
+    if (reportedIds.length) filter._id = { $nin: reportedIds };
+
+    const posts = await Post.find(filter)
       .populate('user', 'name username profilePicture verified')
       .populate('retweetedBy', 'name username profilePicture verified')
       .populate('originalPost')
@@ -90,11 +102,32 @@ router.get('/', auth, async (req, res) => {
           select: 'name username profilePicture verified',
         },
       })
-      .sort({createdAt: -1});
+      .sort({createdAt: -1})
+      .lean();
 
     res.json(posts);
   } catch (error) {
     console.error('Get posts error:', error);
+    res.status(500).json({message: 'Server error'});
+  }
+});
+
+// @route   POST /api/posts/:id/report
+// @desc    Report a post (hides it from reporter's feed)
+// @access  Private
+router.post('/:id/report', auth, async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.id);
+    if (!post) return res.status(404).json({message: 'Post not found'});
+    const reporterId = req.user._id;
+    await PostReport.findOneAndUpdate(
+      { reporter: reporterId, post: post._id },
+      { reporter: reporterId, post: post._id },
+      { upsert: true, new: true }
+    );
+    res.json({ message: 'Post reported. It will be hidden from your feed.' });
+  } catch (error) {
+    console.error('Report post error:', error);
     res.status(500).json({message: 'Server error'});
   }
 });

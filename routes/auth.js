@@ -289,6 +289,8 @@ router.get('/me', auth, async (req, res) => {
     const user = await User.findById(req.user._id).select('-password -otp -otpExpiry');
     const userObj = user.toObject();
     userObj.verified = userObj.verified || userObj.isVerified || false;
+    userObj.followersCount = (userObj.followers || []).length;
+    userObj.followingCount = (userObj.following || []).length;
     res.json(userObj);
   } catch (error) {
     console.error('Get user error:', error);

@@ -145,6 +145,55 @@ router.put(
   }
 );
 
+// @route   POST /api/users/:id/block
+// @desc    Block a user (their posts disappear from your feed; unfollow both ways)
+// @access  Private
+router.post('/:id/block', auth, async (req, res) => {
+  try {
+    const targetId = req.params.id;
+    const currentUser = await User.findById(req.user._id);
+    const targetUser = await User.findById(targetId);
+    if (!targetUser) return res.status(404).json({message: 'User not found'});
+    if (targetId.toString() === currentUser._id.toString()) {
+      return res.status(400).json({message: 'Cannot block yourself'});
+    }
+    const tid = targetUser._id;
+    const cid = currentUser._id;
+    if (!currentUser.blockedUsers) currentUser.blockedUsers = [];
+    if (currentUser.blockedUsers.some((id) => id.toString() === tid.toString())) {
+      return res.json({message: 'User already blocked'});
+    }
+    currentUser.blockedUsers.push(tid);
+    currentUser.following = (currentUser.following || []).filter((id) => id.toString() !== tid.toString());
+    targetUser.followers = (targetUser.followers || []).filter((id) => id.toString() !== cid.toString());
+    await currentUser.save();
+    await targetUser.save();
+    res.json({message: 'User blocked. Their posts will be hidden from your feed.'});
+  } catch (error) {
+    console.error('Block user error:', error);
+    res.status(500).json({message: 'Server error'});
+  }
+});
+
+// @route   DELETE /api/users/:id/block
+// @desc    Unblock a user
+// @access  Private
+router.delete('/:id/block', auth, async (req, res) => {
+  try {
+    const targetId = req.params.id;
+    const currentUser = await User.findById(req.user._id);
+    if (!currentUser.blockedUsers) return res.json({message: 'User not blocked'});
+    currentUser.blockedUsers = currentUser.blockedUsers.filter(
+      (id) => id.toString() !== targetId.toString()
+    );
+    await currentUser.save();
+    res.json({message: 'User unblocked'});
+  } catch (error) {
+    console.error('Unblock user error:', error);
+    res.status(500).json({message: 'Server error'});
+  }
+});
+
 // @route   POST /api/users/:id/follow
 // @desc    Follow/Unfollow a user
 // @access  Private
@@ -161,7 +210,7 @@ router.post('/:id/follow', auth, async (req, res) => {
       return res.status(400).json({message: 'Cannot follow yourself'});
     }
 
-    const isFollowing = currentUser.following.includes(targetUser._id);
+    const isFollowing = currentUser.following.some((id) => id.toString() === targetUser._id.toString());
 
     if (isFollowing) {
       // Unfollow
