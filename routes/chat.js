@@ -24,7 +24,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // @route   POST /api/chat
-// @desc    Create or get existing chat
+// @desc    Create or get existing chat. Only allowed when both users follow each other.
 // @access  Private
 router.post('/', auth, async (req, res) => {
   try {
@@ -34,7 +34,28 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({message: 'Receiver ID is required'});
     }
 
-    // Check if chat already exists
+    const currentUserId = req.user._id.toString();
+    const receiverIdStr = receiverId.toString();
+    if (currentUserId === receiverIdStr) {
+      return res.status(400).json({message: 'Cannot start a chat with yourself'});
+    }
+
+    const receiver = await User.findById(receiverId);
+    if (!receiver) {
+      return res.status(404).json({message: 'User not found'});
+    }
+
+    const currentUser = await User.findById(req.user._id).select('following');
+    const currentFollowing = (currentUser.following || []).map((id) => id.toString());
+    const receiverFollowing = (receiver.following || []).map((id) => id.toString());
+    const mutualFollow =
+      currentFollowing.includes(receiverIdStr) && receiverFollowing.includes(currentUserId);
+    if (!mutualFollow) {
+      return res.status(403).json({
+        message: 'You can only message users who follow you back. Send a follow request and wait for them to accept.',
+      });
+    }
+
     let chat = await Chat.findOne({
       participants: {$all: [req.user._id, receiverId]},
     });
@@ -57,18 +78,18 @@ router.post('/', auth, async (req, res) => {
 });
 
 // @route   GET /api/chat/:chatId
-// @desc    Get chat messages
+// @desc    Get chat with all messages (from DB) for backup/restore
 // @access  Private
 router.get('/:chatId', auth, async (req, res) => {
   try {
     const chat = await Chat.findById(req.params.chatId)
-      .populate('participants', 'name username profilePicture');
+      .populate('participants', 'name username profilePicture')
+      .populate('messages.sender', 'name username profilePicture');
 
     if (!chat) {
       return res.status(404).json({message: 'Chat not found'});
     }
 
-    // Check if user is participant
     if (!chat.participants.some((p) => p._id.toString() === req.user._id.toString())) {
       return res.status(403).json({message: 'Not authorized'});
     }

@@ -90,7 +90,9 @@ const notificationsRoute = require('./routes/notifications');
 app.use('/api/notifications', notificationsRoute.router);
 app.use('/api/search', require('./routes/search'));
 
-// Socket.io connection handling – all handlers wrapped so connection issues never crash the server
+const Chat = require('./models/Chat');
+
+// Socket.io: real-time chat; persist message to DB and emit to other participant
 io.on('connection', (socket) => {
   try {
     console.log('User connected:', socket.id);
@@ -109,16 +111,36 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('send-message', (data) => {
+  socket.on('send-message', async (data) => {
     try {
-      const receiverId = data && data.receiverId;
-      const message = data && data.message;
+      const chatId = data && data.chatId;
+      const text = (data && data.text) ? String(data.text).trim() : '';
       const senderId = data && data.senderId;
-      if (receiverId != null) {
-        io.to(`user-${receiverId}`).emit('receive-message', {
-          senderId,
-          message: message != null ? message : '',
-          timestamp: new Date(),
+      if (!chatId || !text || !senderId) return;
+
+      const chat = await Chat.findById(chatId);
+      if (!chat) return;
+      const participants = (chat.participants || []).map((p) => p.toString());
+      if (!participants.includes(senderId.toString())) return;
+
+      chat.messages.push({
+        sender: senderId,
+        text,
+        timestamp: new Date(),
+      });
+      await chat.save();
+
+      const savedMsg = chat.messages[chat.messages.length - 1];
+      const otherId = participants.find((id) => id !== senderId.toString());
+      if (otherId) {
+        io.to(`user-${otherId}`).emit('receive-message', {
+          chatId,
+          message: {
+            _id: savedMsg._id,
+            sender: savedMsg.sender,
+            text: savedMsg.text,
+            timestamp: savedMsg.timestamp,
+          },
         });
       }
     } catch (e) {
