@@ -92,11 +92,12 @@ io.engine.on('connection_error', (err) => {
 });
 
 // MongoDB Connection
+// Use MONGO_URI or MONGODB_URI in .env. If password has @ or #, use percent-encoding (e.g. @ → %40)
+const defaultUri = 'mongodb://127.0.0.1:27017/social_db';
+const mongoUri = process.env.MONGO_URI || process.env.MONGODB_URI || defaultUri;
+
 mongoose
-  .connect(process.env.MONGODB_URI || 'mongodb://socialapp:Social@12345@localhost:27018/social?authSource=social', {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(mongoUri)
   .then(() => console.log('MongoDB Connected'))
   .catch((err) => console.error('MongoDB connection error:', err));
 

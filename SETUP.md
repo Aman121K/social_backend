@@ -59,11 +59,30 @@ You can test the API using:
 - Thunder Client (VS Code extension)
 - Or the mobile app
 
+## EC2 / Production (MongoDB with auth)
+
+If MongoDB has authentication enabled (e.g. you created a user with `db.createUser`):
+
+1. In `.env` on the server set:
+   ```env
+   MONGODB_URI=mongodb://social_user:YOUR_PASSWORD@127.0.0.1:27017/social_db?authSource=social_db
+   ```
+   Replace `YOUR_PASSWORD` with the actual password. If the password contains `@`, `#`, or `%`, encode them (e.g. `@` → `%40`).
+
+2. Restart the app after changing `.env`:
+   ```bash
+   pm2 restart all
+   ```
+
+3. If you see `Server selection timed out` or `12345:27017`: the app is using a wrong or unset `MONGODB_URI`. Ensure `.env` exists in the backend folder and contains the correct `MONGODB_URI` (see above). The default in code is `mongodb://127.0.0.1:27017/social_db` (no auth); if your MongoDB requires auth, you must set `MONGODB_URI` in `.env`.
+
 ## Common Issues
 
-1. **MongoDB Connection Error**
-   - Make sure MongoDB is running
-   - Check the connection string in `.env`
+1. **MongoDB Connection Error** / **Server selection timed out** / **12345:27017**
+   - Make sure MongoDB is running: `sudo systemctl status mongod`
+   - If using auth, set `MONGODB_URI` in `.env` with the correct user, password, and `authSource=social_db`
+   - Do not use a connection string where the password contains `@` unless it is percent-encoded (`%40`)
+   - Restart app after editing `.env`: `pm2 restart all`
 
 2. **Email Not Sending**
    - Verify email credentials
