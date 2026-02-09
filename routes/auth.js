@@ -73,18 +73,39 @@ router.post(
 
       await user.save();
 
-      // Send OTP email
-      const emailSent = await sendOTP(email, otp);
+      // Send OTP email (don't fail signup if email service is misconfigured)
+      let emailSent = false;
+      try {
+        emailSent = await sendOTP(email, otp);
+      } catch (emailErr) {
+        console.error('Signup: send OTP error', emailErr);
+      }
       if (!emailSent) {
-        return res.status(500).json({message: 'Failed to send OTP email'});
+        console.warn('Signup: OTP email not sent. Check EMAIL_* in .env');
       }
 
       res.status(201).json({
-        message: 'User registered successfully. Please verify your email with OTP.',
+        message: emailSent
+          ? 'User registered successfully. Please verify your email with OTP.'
+          : 'User registered. We could not send the verification email. Please contact support or try again later.',
         userId: user._id,
       });
     } catch (error) {
       console.error('Signup error:', error);
+
+      // Duplicate key (email/username already exists) – return 400
+      if (error.code === 11000) {
+        const field = error.message.includes('username') ? 'username' : 'email';
+        return res.status(400).json({
+          message: `A user with this ${field} already exists.`,
+        });
+      }
+      if (error.name === 'ValidationError') {
+        return res.status(400).json({
+          message: error.message || 'Validation failed',
+        });
+      }
+
       res.status(500).json({message: 'Server error'});
     }
   }

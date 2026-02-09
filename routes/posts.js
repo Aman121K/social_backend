@@ -42,6 +42,17 @@ router.post(
       await post.save();
       await post.populate('user', 'name username profilePicture verified');
 
+      // Notify followers that this user created a new post
+      try {
+        const author = await User.findById(req.user._id).select('followers');
+        const followerIds = author?.followers || [];
+        for (const followerId of followerIds) {
+          await createNotification(followerId, 'new_post', req.user._id, post._id);
+        }
+      } catch (e) {
+        console.error('Notify followers error:', e);
+      }
+
       // Create notifications for mentions
       const mentionRegex = /@(\w+)/g;
       const mentions = post.text.match(mentionRegex) || post.caption.match(mentionRegex) || [];

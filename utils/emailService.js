@@ -22,7 +22,7 @@ const sendOTP = async (email, otp, type = 'Verification') => {
         : 'Your OTP for email verification is:';
 
     const mailOptions = {
-      from: process.env.EMAIL_USER,
+      from: process.env.EMAIL_USER || 'noreply@example.com',
       to: email,
       subject: subject,
       html: `
